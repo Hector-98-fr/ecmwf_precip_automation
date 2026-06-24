@@ -5,42 +5,38 @@ import numpy as np
 import pandas as pd
 
 from datetime import datetime, timedelta
-
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import tempfile
 
 # =====================================================
 # CONFIG
 # =====================================================
 
 OUTPUT_DIR = "outputs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-os.makedirs(
-    OUTPUT_DIR,
-    exist_ok=True
-)
-
-# Cameroon extent
-
-BBOX = [
-    8,
-    17,
-    1,
-    14
-]
-
-CITIES = {
-    "Maroua": (10.59, 14.32),
-    "Garoua": (9.30, 13.39),
-    "Ngaoundere": (7.32, 13.58),
-    "Yaounde": (3.87, 11.52),
-    "Douala": (4.05, 9.70)
+COUNTRIES = {
+    "Cameroon": {
+        "bbox": (8, 17, 1, 14),
+        "cities": {
+            "Maroua": (10.59, 14.32),
+            "Garoua": (9.30, 13.39),
+            "Ngaoundere": (7.32, 13.58),
+            "Yaounde": (3.87, 11.52),
+            "Douala": (4.05, 9.70)
+        }
+    },
+    "Chad": {
+        "bbox": (13, 24, 7, 24),
+        "cities": {
+            "N'Djamena": (12.11, 15.05),
+            "Moundou": (8.56, 16.08),
+            "Sarh": (9.15, 18.38)
+        }
+    }
 }
-
-# =====================================================
-# ECMWF URL
-# =====================================================
 
 today = datetime.utcnow()
 
@@ -51,123 +47,116 @@ base_url = (
 )
 
 # =====================================================
-# DOWNLOAD
+# DOWNLOAD + IMMEDIATE CLEANUP
 # =====================================================
 
-def download_forecasts():
+def fetch_and_extract_subset(h, bbox):
+    """
+    Download GRIB, extract bbox, delete file immediately.
+    """
 
-    files = []
+    url = f"{base_url}-{h}h-oper-fc.grib2"
 
-    for h in range(24,169,24):
+    with tempfile.NamedTemporaryFile(suffix=".grib2", delete=False) as tmp:
+        tmp_path = tmp.name
 
-        url = f"{base_url}-{h}h-oper-fc.grib2"
+    r = requests.get(url, timeout=120)
 
-        local_file = os.path.join(
-            OUTPUT_DIR,
-            f"day_{h}.grib2"
-        )
+    if r.status_code != 200:
+        print("Missing:", h)
+        return None
 
-        print("Downloading", url)
+    with open(tmp_path, "wb") as f:
+        f.write(r.content)
 
-        r = requests.get(
-            url,
-            timeout=60
-        )
-
-        if r.status_code == 200:
-
-            with open(local_file,"wb") as f:
-                f.write(r.content)
-
-            files.append(local_file)
-
-        else:
-
-            print(
-                "Missing forecast:",
-                h
-            )
-
-    return files
-
-# =====================================================
-# PRECIP EXTRACTION
-# =====================================================
-
-def compute_daily_precip(files):
-
-    daily = []
-
-    previous = None
-
-    dates = []
-
-    for i,file in enumerate(files):
-
+    try:
         ds = xr.open_dataset(
-            file,
+            tmp_path,
             engine="cfgrib",
-            filter_by_keys={
-                "typeOfLevel":"surface"
-            },
-            decode_timedelta=False
+            filter_by_keys={"typeOfLevel": "surface"},
         )
 
-        precip = ds["tp"] * 1000
+        # Crop immediately → HUGE memory reduction
+        min_lon, max_lon, min_lat, max_lat = bbox
 
-        if previous is None:
-
-            daily_precip = precip
-
-        else:
-
-            daily_precip = precip - previous
-
-        previous = precip
-
-        daily.append(
-            daily_precip
+        ds = ds.sel(
+            longitude=slice(min_lon, max_lon),
+            latitude=slice(max_lat, min_lat)  # reversed lat order in ECMWF
         )
 
-        dates.append(
-            (
-                datetime.utcnow()
-                + timedelta(days=i+1)
-            ).strftime("%d-%b")
-        )
+        tp = ds["tp"] * 1000  # m → mm
 
         ds.close()
 
-    return daily, dates
+    finally:
+        os.remove(tmp_path)
+
+    return tp
+
+# =====================================================
+# PROCESS FORECASTS
+# =====================================================
+
+def process_country(name, config):
+
+    bbox = config["bbox"]
+    cities = config["cities"]
+
+    daily = []
+    dates = []
+
+    prev = None
+
+    print(f"\nProcessing {name}")
+
+    for i, h in enumerate(range(24, 169, 24)):
+
+        print("Hour:", h)
+
+        precip = fetch_and_extract_subset(h, bbox)
+
+        if precip is None:
+            continue
+
+        # convert accumulation → incremental
+        if prev is None:
+            daily_precip = precip
+        else:
+            daily_precip = precip - prev
+
+        prev = precip
+        daily.append(daily_precip)
+
+        dates.append(
+            (datetime.utcnow() + timedelta(days=i+1)).strftime("%d-%b")
+        )
+
+    total = sum(daily)
+
+    create_map(total, dates, cities, name)
+    df = create_table(daily, dates, cities, name)
+
+    print(df)
+    print(f"{name} done.")
 
 # =====================================================
 # MAP
 # =====================================================
 
-def create_map(
-    total_precip,
-    dates
-):
+def create_map(total_precip, dates, cities, name):
 
-    fig = plt.figure(
-        figsize=(12,8)
-    )
+    fig = plt.figure(figsize=(10, 7))
+    ax = plt.axes(projection=ccrs.PlateCarree())
 
-    ax = plt.axes(
-        projection=ccrs.PlateCarree()
-    )
+    ax.set_extent([
+        float(total_precip.longitude.min()),
+        float(total_precip.longitude.max()),
+        float(total_precip.latitude.min()),
+        float(total_precip.latitude.max())
+    ])
 
-    ax.set_extent(
-        BBOX
-    )
-
-    ax.add_feature(
-        cfeature.BORDERS
-    )
-
-    ax.add_feature(
-        cfeature.COASTLINE
-    )
+    ax.add_feature(cfeature.BORDERS)
+    ax.add_feature(cfeature.COASTLINE)
 
     mesh = ax.pcolormesh(
         total_precip.longitude,
@@ -177,38 +166,16 @@ def create_map(
         transform=ccrs.PlateCarree()
     )
 
-    for city,(lat,lon) in CITIES.items():
+    for city, (lat, lon) in cities.items():
+        ax.plot(lon, lat, "ro", transform=ccrs.PlateCarree())
+        ax.text(lon + 0.2, lat + 0.2, city, fontsize=8)
 
-        ax.plot(
-            lon,
-            lat,
-            "ro",
-            transform=ccrs.PlateCarree()
-        )
+    plt.colorbar(mesh, label="7-Day Total Rainfall (mm)")
 
-        ax.text(
-            lon+0.15,
-            lat+0.15,
-            city,
-            fontsize=9,
-            transform=ccrs.PlateCarree()
-        )
-
-    plt.colorbar(
-        mesh,
-        label="7-Day Total Rainfall (mm)"
-    )
-
-    plt.title(
-        f"Cameroon ECMWF 7-Day Rainfall\n"
-        f"{dates[0]} to {dates[-1]}"
-    )
+    plt.title(f"{name} ECMWF 7-Day Rainfall\n{dates[0]} to {dates[-1]}")
 
     plt.savefig(
-        os.path.join(
-            OUTPUT_DIR,
-            "cameroon_7day_precipitation.png"
-        ),
+        os.path.join(OUTPUT_DIR, f"{name.lower()}_7day_precip.png"),
         dpi=300,
         bbox_inches="tight"
     )
@@ -219,62 +186,32 @@ def create_map(
 # TABLE
 # =====================================================
 
-def create_table(
-    daily_precip,
-    dates
-):
+def create_table(daily_precip, dates, cities, name):
 
     rows = []
 
-    for city,(lat,lon) in CITIES.items():
+    for city, (lat, lon) in cities.items():
 
-        city_values = []
-
+        values = []
         total = 0
 
-        for precip in daily_precip:
+        for p in daily_precip:
 
-            value = float(
-                precip.sel(
-                    latitude=lat,
-                    longitude=lon,
-                    method="nearest"
-                )
-            )
+            v = float(p.sel(latitude=lat, longitude=lon, method="nearest"))
+            v = round(v, 1)
 
-            value = round(
-                value,
-                1
-            )
+            values.append(v)
+            total += v
 
-            city_values.append(
-                value
-            )
-
-            total += value
-
-        rows.append(
-            [city]
-            + city_values
-            + [round(total,1)]
-        )
-
-    columns = (
-        ["City"]
-        + dates
-        + ["7DayTotal"]
-    )
+        rows.append([city] + values + [round(total, 1)])
 
     df = pd.DataFrame(
         rows,
-        columns=columns
+        columns=["City"] + dates + ["7DayTotal"]
     )
 
     df.to_csv(
-        os.path.join(
-            OUTPUT_DIR,
-            "cameroon_precipitation_table.csv"
-        ),
+        os.path.join(OUTPUT_DIR, f"{name.lower()}_precip_table.csv"),
         index=False
     )
 
@@ -286,35 +223,8 @@ def create_table(
 
 def main():
 
-    print(
-        "Downloading ECMWF forecast..."
-    )
-
-    files = download_forecasts()
-
-    daily_precip, dates = (
-        compute_daily_precip(files)
-    )
-
-    total_precip = sum(
-        daily_precip
-    )
-
-    create_map(
-        total_precip,
-        dates
-    )
-
-    df = create_table(
-        daily_precip,
-        dates
-    )
-
-    print(df)
-
-    print(
-        "Finished successfully."
-    )
+    for name, config in COUNTRIES.items():
+        process_country(name, config)
 
 if __name__ == "__main__":
     main()
