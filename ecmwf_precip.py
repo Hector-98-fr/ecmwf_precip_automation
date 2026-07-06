@@ -212,23 +212,23 @@ def create_map(total_precip, dates, cities, name):
 # USE CITIES FROM COUNTRIES DICTIONARY (DYNAMIC)
 # =====================================================
 
-for city, (lat, lon) in cities.items():
+    for city, (lat, lon) in cities.items():
 
-    ax.plot(
-        lon,
-        lat,
-        "ro",
-        markersize=5,
-        transform=ccrs.PlateCarree()
-    )
+        ax.plot(
+            lon,
+            lat,
+            "ro",
+            markersize=5,
+            transform=ccrs.PlateCarree()
+        )
 
-    ax.text(
-        lon + 0.15,
-        lat + 0.15,
-        city,
-        fontsize=9,
-        transform=ccrs.PlateCarree()
-    )
+        ax.text(
+            lon + 0.15,
+            lat + 0.15,
+            city,
+            fontsize=9,
+            transform=ccrs.PlateCarree()
+        )
 
     # =====================================================
     # COLORBAR (DISCRETE LOOK)
