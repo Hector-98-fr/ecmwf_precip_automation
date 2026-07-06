@@ -143,6 +143,8 @@ def process_country(name, config):
 # MAP
 # =====================================================
 
+from matplotlib.colors import ListedColormap, BoundaryNorm
+
 def create_map(total_precip, dates, cities, name):
 
     fig = plt.figure(figsize=(10, 7))
@@ -158,11 +160,38 @@ def create_map(total_precip, dates, cities, name):
     ax.add_feature(cfeature.BORDERS)
     ax.add_feature(cfeature.COASTLINE)
 
+    # =====================================================
+    # FIXED BINS + COLORS
+    # =====================================================
+
+    bounds = [
+        0, 2, 5, 10, 25, 50,
+        75, 100, 150, 200, 300, 10000  # last = >300
+    ]
+
+    colors = [
+        "white",        # 0–2
+        "#b7e4c7",      # light green
+        "#2d6a4f",      # green
+        "#1b4332",      # dark green
+        "#90e0ef",      # light blue
+        "#0077b6",      # blue
+        "#023e8a",      # dark blue
+        "#cdb4db",      # light purple
+        "#9d4edd",      # purple
+        "#3c096c",      # dark purple
+        "black"         # >300
+    ]
+
+    cmap = ListedColormap(colors)
+    norm = BoundaryNorm(bounds, cmap.N)
+
     mesh = ax.pcolormesh(
         total_precip.longitude,
         total_precip.latitude,
         total_precip,
-        cmap="YlGnBu",
+        cmap=cmap,
+        norm=norm,
         transform=ccrs.PlateCarree()
     )
 
@@ -170,7 +199,8 @@ def create_map(total_precip, dates, cities, name):
         ax.plot(lon, lat, "ro", transform=ccrs.PlateCarree())
         ax.text(lon + 0.2, lat + 0.2, city, fontsize=8)
 
-    plt.colorbar(mesh, label="7-Day Total Rainfall (mm)")
+    cbar = plt.colorbar(mesh, boundaries=bounds, ticks=bounds[:-1])
+    cbar.set_label("7-Day Total Rainfall (mm)")
 
     plt.title(f"{name} ECMWF 7-Day Rainfall\n{dates[0]} to {dates[-1]}")
 
@@ -181,7 +211,6 @@ def create_map(total_precip, dates, cities, name):
     )
 
     plt.close()
-
 # =====================================================
 # TABLE
 # =====================================================
