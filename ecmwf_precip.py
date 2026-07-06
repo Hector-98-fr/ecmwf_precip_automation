@@ -208,20 +208,27 @@ def create_map(total_precip, dates, cities, name):
         transform=ccrs.PlateCarree()
     )
 
-    # =====================================================
-    # FOCUS CITIES (UPDATED)
-    # =====================================================
+# =====================================================
+# USE CITIES FROM COUNTRIES DICTIONARY (DYNAMIC)
+# =====================================================
 
-    FOCUS_CITIES = {
-        "Buea": (4.15, 9.24),
-        "Yaoundé": (3.87, 11.52),
-        "Maroua": (10.59, 14.32),
-        "Kousseri": (12.08, 15.03)
-    }
+for city, (lat, lon) in cities.items():
 
-    for city, (lat, lon) in FOCUS_CITIES.items():
-        ax.plot(lon, lat, "ro", transform=ccrs.PlateCarree())
-        ax.text(lon + 0.15, lat + 0.15, city, fontsize=9)
+    ax.plot(
+        lon,
+        lat,
+        "ro",
+        markersize=5,
+        transform=ccrs.PlateCarree()
+    )
+
+    ax.text(
+        lon + 0.15,
+        lat + 0.15,
+        city,
+        fontsize=9,
+        transform=ccrs.PlateCarree()
+    )
 
     # =====================================================
     # COLORBAR (DISCRETE LOOK)
