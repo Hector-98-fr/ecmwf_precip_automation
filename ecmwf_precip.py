@@ -146,7 +146,7 @@ def process_country(name, config):
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
-import numpy as np
+from matplotlib.colors import ListedColormap, BoundaryNorm
 
 def create_map(total_precip, dates, cities, name):
 
@@ -164,55 +164,48 @@ def create_map(total_precip, dates, cities, name):
     ax.add_feature(cfeature.COASTLINE, linewidth=0.8)
 
     # =====================================================
-    # SMOOTH DATA (IMPORTANT FOR CONTOURS)
+    # DISCRETE RAINFALL CLASSES
     # =====================================================
 
-    lon = total_precip.longitude
-    lat = total_precip.latitude
-    data = total_precip.values
-
-    # =====================================================
-    # CONTOUR LEVELS (same logic as your classes)
-    # =====================================================
-
-    levels = [
+    bounds = [
         0, 2, 5, 10, 25, 50,
-        75, 100, 150, 200, 300, 1000
+        75, 100, 150, 200, 300, 10000
     ]
 
+    colors = [
+        "white",        # 0–2
+        "#b7e4c7",      # 2–5 light green
+        "#2d6a4f",      # 5–10 green
+        "#1b4332",      # 10–25 dark green
+        "#90e0ef",      # 25–50 light blue
+        "#0077b6",      # 50–75 blue
+        "#023e8a",      # 75–100 dark blue
+        "#cdb4db",      # 100–150 light purple
+        "#9d4edd",      # 150–200 purple
+        "#3c096c",      # 200–300 dark purple
+        "#000000"       # >300 black
+    ]
+
+    cmap = ListedColormap(colors)
+    norm = BoundaryNorm(bounds, cmap.N)
+
     # =====================================================
-    # FILLED CONTOURS (smooth map instead of grid)
+    # DISCRETE FILLED MAP (NO ISOLINES)
     # =====================================================
 
     cf = ax.contourf(
-        lon,
-        lat,
-        data,
-        levels=levels,
-        cmap="YlGnBu",
+        total_precip.longitude,
+        total_precip.latitude,
+        total_precip.values,
+        levels=bounds,
+        cmap=cmap,
+        norm=norm,
         extend="max",
         transform=ccrs.PlateCarree()
     )
 
     # =====================================================
-    # ISOLINES (clean boundaries between rainfall zones)
-    # =====================================================
-
-    cs = ax.contour(
-        lon,
-        lat,
-        data,
-        levels=levels,
-        colors="black",
-        linewidths=0.5,
-        alpha=0.6,
-        transform=ccrs.PlateCarree()
-    )
-
-    ax.clabel(cs, inline=True, fontsize=7, fmt="%d")
-
-    # =====================================================
-    # UPDATED CITIES (CAMEROON FOCUS)
+    # FOCUS CITIES (UPDATED)
     # =====================================================
 
     FOCUS_CITIES = {
@@ -227,10 +220,15 @@ def create_map(total_precip, dates, cities, name):
         ax.text(lon + 0.15, lat + 0.15, city, fontsize=9)
 
     # =====================================================
-    # COLORBAR
+    # COLORBAR (DISCRETE LOOK)
     # =====================================================
 
-    cbar = plt.colorbar(cf, orientation="vertical", shrink=0.8)
+    cbar = plt.colorbar(
+        cf,
+        ticks=bounds[:-1],
+        shrink=0.8
+    )
+
     cbar.set_label("7-Day Total Rainfall (mm)")
 
     plt.title(f"{name} ECMWF 7-Day Rainfall\n{dates[0]} to {dates[-1]}")
