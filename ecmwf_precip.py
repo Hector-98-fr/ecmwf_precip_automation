@@ -137,7 +137,10 @@ def process_country(name, config):
     create_map(total, dates, cities, name)
     df = create_table(daily, dates, cities, name)
 
+    png_path = save_table_as_png(df, name)
+
     print(df)
+    print("Table PNG saved at:", png_path)
     print(f"{name} done.")
 
 # =====================================================
@@ -275,6 +278,42 @@ def create_table(daily_precip, dates, cities, name):
     )
 
     return df
+
+import matplotlib.pyplot as plt
+
+def save_table_as_png(df, name):
+
+    fig, ax = plt.subplots(figsize=(12, 0.6 * len(df) + 2))
+    ax.axis("off")
+
+    table = ax.table(
+        cellText=df.values,
+        colLabels=df.columns,
+        cellLoc="center",
+        loc="center"
+    )
+
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1.2, 1.4)
+
+    plt.title(f"{name} - 7 Day Rainfall Summary", pad=20)
+
+    output_path = os.path.join(
+        OUTPUT_DIR,
+        f"{name.lower()}_precip_table.png"
+    )
+
+    plt.savefig(
+        output_path,
+        dpi=300,
+        bbox_inches="tight"
+    )
+
+    plt.close()
+
+    return output_path
+
 
 # =====================================================
 # MAIN
