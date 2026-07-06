@@ -143,7 +143,10 @@ def process_country(name, config):
 # MAP
 # =====================================================
 
-from matplotlib.colors import ListedColormap, BoundaryNorm
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+import numpy as np
 
 def create_map(total_precip, dates, cities, name):
 
@@ -157,49 +160,77 @@ def create_map(total_precip, dates, cities, name):
         float(total_precip.latitude.max())
     ])
 
-    ax.add_feature(cfeature.BORDERS)
-    ax.add_feature(cfeature.COASTLINE)
+    ax.add_feature(cfeature.BORDERS, linewidth=0.8)
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.8)
 
     # =====================================================
-    # FIXED BINS + COLORS
+    # SMOOTH DATA (IMPORTANT FOR CONTOURS)
     # =====================================================
 
-    bounds = [
+    lon = total_precip.longitude
+    lat = total_precip.latitude
+    data = total_precip.values
+
+    # =====================================================
+    # CONTOUR LEVELS (same logic as your classes)
+    # =====================================================
+
+    levels = [
         0, 2, 5, 10, 25, 50,
-        75, 100, 150, 200, 300, 10000  # last = >300
+        75, 100, 150, 200, 300, 1000
     ]
 
-    colors = [
-        "white",        # 0–2
-        "#b7e4c7",      # light green
-        "#2d6a4f",      # green
-        "#1b4332",      # dark green
-        "#90e0ef",      # light blue
-        "#0077b6",      # blue
-        "#023e8a",      # dark blue
-        "#cdb4db",      # light purple
-        "#9d4edd",      # purple
-        "#3c096c",      # dark purple
-        "black"         # >300
-    ]
+    # =====================================================
+    # FILLED CONTOURS (smooth map instead of grid)
+    # =====================================================
 
-    cmap = ListedColormap(colors)
-    norm = BoundaryNorm(bounds, cmap.N)
-
-    mesh = ax.pcolormesh(
-        total_precip.longitude,
-        total_precip.latitude,
-        total_precip,
-        cmap=cmap,
-        norm=norm,
+    cf = ax.contourf(
+        lon,
+        lat,
+        data,
+        levels=levels,
+        cmap="YlGnBu",
+        extend="max",
         transform=ccrs.PlateCarree()
     )
 
-    for city, (lat, lon) in cities.items():
-        ax.plot(lon, lat, "ro", transform=ccrs.PlateCarree())
-        ax.text(lon + 0.2, lat + 0.2, city, fontsize=8)
+    # =====================================================
+    # ISOLINES (clean boundaries between rainfall zones)
+    # =====================================================
 
-    cbar = plt.colorbar(mesh, boundaries=bounds, ticks=bounds[:-1])
+    cs = ax.contour(
+        lon,
+        lat,
+        data,
+        levels=levels,
+        colors="black",
+        linewidths=0.5,
+        alpha=0.6,
+        transform=ccrs.PlateCarree()
+    )
+
+    ax.clabel(cs, inline=True, fontsize=7, fmt="%d")
+
+    # =====================================================
+    # UPDATED CITIES (CAMEROON FOCUS)
+    # =====================================================
+
+    FOCUS_CITIES = {
+        "Buea": (4.15, 9.24),
+        "Yaoundé": (3.87, 11.52),
+        "Maroua": (10.59, 14.32),
+        "Kousseri": (12.08, 15.03)
+    }
+
+    for city, (lat, lon) in FOCUS_CITIES.items():
+        ax.plot(lon, lat, "ro", transform=ccrs.PlateCarree())
+        ax.text(lon + 0.15, lat + 0.15, city, fontsize=9)
+
+    # =====================================================
+    # COLORBAR
+    # =====================================================
+
+    cbar = plt.colorbar(cf, orientation="vertical", shrink=0.8)
     cbar.set_label("7-Day Total Rainfall (mm)")
 
     plt.title(f"{name} ECMWF 7-Day Rainfall\n{dates[0]} to {dates[-1]}")
