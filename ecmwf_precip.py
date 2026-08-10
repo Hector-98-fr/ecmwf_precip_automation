@@ -304,7 +304,7 @@ def save_table_as_png(df, name):
     table.set_fontsize(10)
     table.scale(1.2, 1.4)
 
-    plt.title(f"{name} - 7 Day Rainfall Summary", pad=20)
+    #plt.title(f"{name} - 7 Day Rainfall Summary", pad=20)
 
     output_path = os.path.join(
         OUTPUT_DIR,
